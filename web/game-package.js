@@ -1,72 +1,81 @@
-// Emscripten data package loader for game.love
-// Async fetch with proper preRun sequencing to ensure mounting before Love2D boot
+// Emscripten game package loader - handles mounting game.love to FS
+// Executes BEFORE love.js loads to ensure file is available when needed
+
 var Module = Module || {};
 
-(function() {
-  if (!Module.preRun) Module.preRun = [];
+// Initialize preRun array
+if (!Module.preRun) Module.preRun = [];
+
+// Global state
+var _gameArchive = null;
+var _archiveFetchComplete = false;
+
+// Step 1: Fetch game archive SYNCHRONOUSLY (before any async bootstrap)
+console.log('[GameLoader] Starting synchronous fetch of game.love...');
+try {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', 'game.love', false); // synchronous
+  xhr.responseType = 'arraybuffer';
+  xhr.send();
   
-  // Fetch game.love early and keep as module property
-  var gameDataFetched = false;
-  var gameDataBuffer = null;
+  if (xhr.status === 200 && xhr.response) {
+    _gameArchive = xhr.response;
+    _archiveFetchComplete = true;
+    console.log('[GameLoader] ✓ Synchronously loaded game.love:', xhr.response.byteLength, 'bytes');
+  } else {
+    throw new Error('HTTP ' + xhr.status);
+  }
+} catch(e) {
+  console.error('[GameLoader] ✗ Synchronous load failed:', e.message);
+  console.log('[GameLoader] Falling back to async fetch...');
   
-  // Add fetch to beginning of preRun chain
-  Module.preRun.unshift(function() {
-    console.log('[Package Loader] preRun: Waiting for game data fetch...');
-  });
+  // Fallback: async fetch
+  fetch('game.love')
+    .then(response => {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.arrayBuffer();
+    })
+    .then(buffer => {
+      _gameArchive = buffer;
+      _archiveFetchComplete = true;
+      console.log('[GameLoader] ✓ Async load complete:', buffer.byteLength, 'bytes');
+    })
+    .catch(err => {
+      console.error('[GameLoader] ✗ Async fetch also failed:', err);
+    });
+}
+
+// Step 2: Mount archive to FS during preRun (before Love2D boots)
+Module.preRun.push(function() {
+  console.log('[GameLoader] preRun callback executing...');
   
-  // Fetch game.love with error handling
-  console.log('[Package Loader] Starting synchronous game.love fetch...');
+  if (!_gameArchive) {
+    console.error('[GameLoader] ✗ No game archive data available!');
+    return;
+  }
   
-  var req = new XMLHttpRequest();
-  req.open('GET', 'game.love', false); // synchronous
-  req.responseType = 'arraybuffer';
+  if (typeof FS === 'undefined') {
+    console.error('[GameLoader] ✗ FS not available in preRun');
+    return;
+  }
   
   try {
-    req.send();
-    if (req.status === 200) {
-      gameDataBuffer = req.response;
-      gameDataFetched = true;
-      console.log('[Package Loader] ✓ game.love fetched: ' + gameDataBuffer.byteLength + ' bytes');
-    } else {
-      console.error('[Package Loader] ✗ HTTP ' + req.status + ' fetching game.love');
-      throw new Error('Failed to fetch game.love: HTTP ' + req.status);
-    }
+    // Convert ArrayBuffer to Uint8Array
+    var archiveData = new Uint8Array(_gameArchive);
+    console.log('[GameLoader] Installing', archiveData.length, 'bytes to FS...');
+    
+    // Mount the game archive
+    FS.createDataFile('/', 'game.love', archiveData, true, true);
+    
+    console.log('[GameLoader] ✓ game.love mounted to FS at /game.love');
+    
+    // Verify the file exists
+    var stat = FS.stat('/game.love');
+    console.log('[GameLoader] ✓ File verified: size =', stat.size, 'bytes');
+    
   } catch(e) {
-    console.error('[Package Loader] ✗ Fetch failed:', e);
-    // Try a fallback - fetch the data early in case synchronous request fails
-    fetch('game.love')
-      .then(r => r.arrayBuffer())
-      .then(buf => {
-        gameDataBuffer = buf;
-        gameDataFetched = true;
-        console.log('[Package Loader] ✓ Fallback fetch succeeded: ' + buf.byteLength + ' bytes');
-      })
-      .catch(err => {
-        console.error('[Package Loader] ✗ Fallback fetch also failed:', err);
-      });
+    console.error('[GameLoader] ✗ Failed to mount:', e);
     throw e;
   }
+});
 
-  // Mount game.love in FS during preRun
-  Module.preRun.push(function() {
-    console.log('[Package Loader] preRun callback: FS available? ' + (typeof FS !== 'undefined'));
-    
-    if (typeof FS !== 'undefined' && gameDataBuffer) {
-      try {
-        var fileData = new Uint8Array(gameDataBuffer);
-        
-        // Try creating at root
-        FS.createDataFile('/', 'game.love', fileData, true, true);
-        console.log('✓ [Package Loader] game.love installed to FS / (' + fileData.length + ' bytes)');
-        
-      } catch(e) {
-        console.error('✗ [Package Loader] FS.createDataFile failed:', e);
-        throw e;
-      }
-    } else {
-      var msg = 'preRun: Cannot install - FS=' + (typeof FS) + ', data=' + (gameDataBuffer ? 'ready' : 'missing');
-      console.error('✗ [Package Loader] ' + msg);
-      throw new Error(msg);
-    }
-  });
-})();
