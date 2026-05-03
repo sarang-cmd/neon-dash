@@ -1,103 +1,45 @@
 // Emscripten data package loader for game.love
-// This tells the Emscripten runtime how to download and manage game.love
+// Uses SYNCHRONOUS fetch to ensure file is available before Love2D boots
 var Module = Module || {};
-Module.expectedDataFileDownloads = 1;
-Module.finishedDataFileDownloads = 0;
-
-if (!Module.hasOwnProperty('dataFileDownloads')) {
-  Module.dataFileDownloads = {};
-}
 
 (function() {
-  var PACKAGE_PATH = typeof window === 'object' ? window.location.pathname.split('/').slice(0, -1).join('/') + '/' : '';
+  // Store game.love data globally for preRun callback
+  window._gameArchiveData = null;
   var REMOTE_PACKAGE_BASE = 'game.love';
-  var REMOTE_PACKAGE_SIZE = 25107;
-  var PACKAGE_UUID = 'neon-dash-game';
 
-  function processPackageData(arrayBuffer) {
-    Module.finishedDataFileDownloads++;
-    function runWithFS() {
-      function assert(check, message) {
-        if (!check) throw message;
-      }
-      var entries = {};
-      entries['game.love'] = {
-        url: REMOTE_PACKAGE_BASE,
-        packOffset: 0,
-        packSize: REMOTE_PACKAGE_SIZE
-      };
-
-      var files = Module['getPreloadedPackages']
-        ? Module['getPreloadedPackages']()
-        : [entries];
-
-      function installPackage(pack) {
-        var metadata = pack['metadata'];
-        var index = pack['blob_index'];
-        var needsAnimationFrame = false;
-        
-        // Write game.love to FS
-        if (typeof FS !== 'undefined' && FS.createDataFile) {
-          try {
-            var fileData = new Uint8Array(arrayBuffer);
-            FS.createDataFile('/', 'game.love', fileData, true, true);
-            console.log('✓ [Package Loader] game.love installed to FS (' + fileData.length + ' bytes)');
-          } catch(e) {
-            console.error('✗ [Package Loader] Failed to install:', e);
-          }
-        }
-      }
-
-      if (Module['calledRun']) {
-        installPackage(files[0]);
-      } else {
-        if (!Module.preRun) Module.preRun = [];
-        Module.preRun.push(function() {
-          installPackage(files[0]);
-        });
-      }
-      
-      Module.finishedDataFileDownloads++;
-    }
-    if (Module['calledRun']) {
-      runWithFS();
-    } else {
-      if (!Module.preRun) Module.preRun = [];
-      Module.preRun.push(runWithFS);
-    }
-  }
-
-  function fetchRemotePackage(packageName, packageSize, callbacks) {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', packageName, true);
-    xhr.responseType = 'arraybuffer';
-    xhr.onprogress = function(event) {
-      if (callbacks.onProgress) {
-        callbacks.onProgress(event.loaded, packageSize);
-      }
-    };
-    xhr.onerror = function() {
-      if (callbacks.onError) callbacks.onError();
-    };
-    xhr.onload = function() {
-      if (callbacks.onLoad) callbacks.onLoad(xhr.response);
-    };
-    xhr.send(null);
-  }
-
-  Module.setStatus('Downloading game data...');
-  console.log('[Package Loader] Fetching game.love from', REMOTE_PACKAGE_BASE);
+  // Use synchronous XMLHttpRequest to fetch game.love IMMEDIATELY
+  console.log('[Package Loader] Fetching game.love (sync)...');
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', REMOTE_PACKAGE_BASE, false); // false = synchronous!
+  xhr.responseType = 'arraybuffer';
+  xhr.onerror = function() {
+    console.error('✗ [Package Loader] Failed to fetch game.love');
+    throw new Error('Cannot load game.love');
+  };
   
-  fetchRemotePackage(REMOTE_PACKAGE_BASE, REMOTE_PACKAGE_SIZE, {
-    onLoad: processPackageData,
-    onProgress: function(loaded, total) {
-      if (Module.setStatus) {
-        Module.setStatus('Downloading game data... (' + Math.floor(100 * loaded / total) + '%)');
+  try {
+    xhr.send(null);
+    window._gameArchiveData = xhr.response;
+    console.log('[Package Loader] game.love fetched (' + xhr.response.byteLength + ' bytes)');
+  } catch(e) {
+    console.error('✗ [Package Loader] Fetch error:', e);
+    throw e;
+  }
+
+  // Mount game.love before Love2D boots
+  if (!Module.preRun) Module.preRun = [];
+  Module.preRun.push(function() {
+    if (FS && typeof FS !== 'undefined' && window._gameArchiveData) {
+      try {
+        var fileData = new Uint8Array(window._gameArchiveData);
+        FS.createDataFile('/', 'game.love', fileData, true, true);
+        console.log('✓ [Package Loader] game.love installed to FS at / (' + fileData.length + ' bytes)');
+      } catch(e) {
+        console.error('✗ [Package Loader] Failed to install to FS:', e);
+        throw e;
       }
-    },
-    onError: function() {
-      console.error('✗ Failed to fetch game.love');
-      throw new Error('Failed to fetch game package');
+    } else {
+      console.warn('[Package Loader] FS not ready or data missing');
     }
   });
 })();
