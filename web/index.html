@@ -133,53 +133,8 @@
                     this.totalDependencies);
             },
             locateFile: function(path) {
-                console.log('[locateFile]', path);
                 return path;
-            },
-            preRun: [function() {
-                console.log('[preRun] Mount game archive before startup...');
-                if (typeof FS === 'undefined') {
-                    console.warn('[preRun] FS not yet available, will retry in postRun');
-                    return;
-                }
-                if (!window.GAME_DATA_B64) {
-                    console.error('[preRun] GAME_DATA_B64 not loaded');
-                    return;
-                }
-                try {
-                    var bstr = atob(window.GAME_DATA_B64);
-                    var bytes = new Uint8Array(bstr.length);
-                    for (var i = 0; i < bstr.length; i++) {
-                        bytes[i] = bstr.charCodeAt(i);
-                    }
-                    FS.writeFile('game.love', bytes);
-                    console.log('✓ [preRun] game.love mounted (' + bytes.length + ' bytes)');
-                } catch (e) {
-                    console.warn('[preRun] Mount failed:', e.message, '- will retry in postRun');
-                }
-            }],
-            postRun: [function() {
-                console.log('[postRun] Game startup initialization...');
-                if (typeof FS === 'undefined') {
-                    console.error('[postRun] FS unavailable');
-                    return;
-                }
-                // Try mounting again if preRun failed
-                if (!window.GAME_MOUNTED && window.GAME_DATA_B64) {
-                    try {
-                        var bstr = atob(window.GAME_DATA_B64);
-                        var bytes = new Uint8Array(bstr.length);
-                        for (var i = 0; i < bstr.length; i++) {
-                            bytes[i] = bstr.charCodeAt(i);
-                        }
-                        FS.writeFile('game.love', bytes);
-                        window.GAME_MOUNTED = true;
-                        console.log('✓ [postRun] game.love mounted (' + bytes.length + ' bytes)');
-                    } catch (e) {
-                        console.error('[postRun] Mount failed:', e.message);
-                    }
-                }
-            }]
+            }
         };
 
         Module.setStatus('Downloading...');
