@@ -81,9 +81,9 @@
         <p>Version 2.0 | Made with Love2D | Font: Press Start 2P</p>
     </footer>
 
-    <script src="love.js"></script>
     <script>
         var Module = {
+            arguments: ["game.love", "web"],
             canvas: document.getElementById("canvas"),
             preRun: [],
             postRun: [],
@@ -94,8 +94,18 @@
                 console.error(text);
             },
             noInitialRun: false,
+            locateFile: function(path) {
+                return path;
+            },
+            onRuntimeInitialized: function() {
+                var loadingScreen = document.getElementById("loading-screen");
+                if (loadingScreen) {
+                    loadingScreen.style.display = "none";
+                }
+            },
         };
-
+    </script>
+    <script src="love.js"></script>
         // Handle visibility change to pause game
         document.addEventListener('visibilitychange', function() {
             if (document.hidden) {
