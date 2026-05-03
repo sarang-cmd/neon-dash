@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON DASH: CYBER RUNNER</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>NEON DASH</h1>
+        <p class="subtitle">CYBER RUNNER</p>
+        <nav>
+            <button class="nav-button">PLAY</button>
+            <button class="nav-button">CONTROLS</button>
+            <button class="nav-button">ABOUT</button>
+        </nav>
+    </header>
+
+    <main>
+        <div id="game-wrapper">
+            <div class="neon-bar neon-bar-left"></div>
+            <div id="game-container">
+                <canvas id="canvas" width="960" height="600"></canvas>
+                <div id="loading-screen">
+                    <p>Loading NEON DASH...</p>
+                </div>
+            </div>
+            <div class="neon-bar neon-bar-right"></div>
+        </div>
+
+        <section id="controls" class="content-section">
+            <h2>CONTROLS</h2>
+            <table>
+                <tr>
+                    <td>Jump / Variable Jump</td>
+                    <td>SPACE / ↑ / W</td>
+                </tr>
+                <tr>
+                    <td>Slide / Fast-Fall</td>
+                    <td>↓ / S / CTRL</td>
+                </tr>
+                <tr>
+                    <td>Pause</td>
+                    <td>ESC / P</td>
+                </tr>
+                <tr>
+                    <td>Restart (Game Over)</td>
+                    <td>R</td>
+                </tr>
+                <tr>
+                    <td>Mute / Unmute</td>
+                    <td>M</td>
+                </tr>
+            </table>
+        </section>
+
+        <section id="about" class="content-section">
+            <h2>ABOUT</h2>
+            <p>
+                NEON DASH: CYBER RUNNER is a cyberpunk pixel art endless runner built with Love2D.
+                Play as BYTE, a rogue AI subroutine escaping AXIOM Corporation's mainframe.
+                Jump, slide, and dodge obstacles as you race against deletion.
+            </p>
+            <p>
+                <strong>Engine:</strong> Love2D 11.4 (Lua)<br>
+                <strong>Web Runtime:</strong> love.js (Emscripten)<br>
+                <strong>Resolution:</strong> 960×600 (2× scale from native 480×300)<br>
+                <strong>Frame Rate:</strong> 60 FPS
+            </p>
+        </section>
+
+        <div id="mobile-warning">
+            <p>FOR BEST EXPERIENCE USE A DESKTOP BROWSER</p>
+        </div>
+    </main>
+
+    <footer>
+        <p>© AXIOM CORPORATION 2187 | ALL ROGUE PROCESSES WILL BE TERMINATED</p>
+        <p>Version 2.0 | Made with Love2D | Font: Press Start 2P</p>
+    </footer>
+
+    <script src="love.js"></script>
+    <script>
+        var Module = {
+            canvas: document.getElementById("canvas"),
+            preRun: [],
+            postRun: [],
+            print: function(text) {
+                console.log(text);
+            },
+            printErr: function(text) {
+                console.error(text);
+            },
+            noInitialRun: false,
+        };
+
+        // Handle visibility change to pause game
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                // Tab hidden - send pause input
+                var event = new KeyboardEvent('keydown', {key: 'p'});
+                document.dispatchEvent(event);
+            }
+        });
+
+        // Fullscreen button
+        document.addEventListener('DOMContentLoaded', function() {
+            var canvas = document.getElementById('canvas');
+            if (canvas) {
+                canvas.addEventListener('dblclick', function() {
+                    if (canvas.requestFullscreen) {
+                        canvas.requestFullscreen();
+                    } else if (canvas.webkitRequestFullscreen) {
+                        canvas.webkitRequestFullscreen();
+                    }
+                });
+            }
+
+            // Sync high score with localStorage
+            setInterval(function() {
+                if (typeof localStorage !== 'undefined') {
+                    var stored = localStorage.getItem('neon-dash-best');
+                    // Could sync back with game state here
+                }
+            }, 5000);
+        });
+    </script>
+</body>
+</html>
