@@ -136,19 +136,24 @@
                 return path;
             },
             postRun: [function() {
-                Module.setStatus('Loading game...');
-                // Mount game.love to the filesystem if not already there
-                fetch('game.love')
-                    .then(resp => resp.arrayBuffer())
-                    .then(buf => {
-                        try {
-                            FS.writeFile('/tmp/game.love', new Uint8Array(buf));
-                            console.log('Game archive mounted to /tmp/game.love');
-                        } catch (e) {
-                            console.error('Failed to mount game.love:', e);
+                // Decode and mount game archive to Emscripten filesystem
+                if (window.GAME_DATA_B64) {
+                    try {
+                        var bstr = atob(window.GAME_DATA_B64);
+                        var bytes = new Uint8Array(bstr.length);
+                        for (var i = 0; i < bstr.length; i++) {
+                            bytes[i] = bstr.charCodeAt(i);
                         }
-                    })
-                    .catch(e => console.error('Failed to fetch game.love:', e));
+                        FS.writeFile('/tmp/game.love', bytes);
+                        Module.setStatus('Game loaded.');
+                        console.log('✓ Game archive mounted: /tmp/game.love (' + bytes.length + ' bytes)');
+                    } catch (e) {
+                        console.error('✗ Failed to mount game archive:', e);
+                        Module.setStatus('Failed to load game archive: ' + e);
+                    }
+                } else {
+                    console.warn('⚠ Game data not found (GAME_DATA_B64 undefined)');
+                }
             }]
         };
 
@@ -189,6 +194,7 @@
     </script>
 
     <script type="text/javascript" src="game.js"></script>
+    <script type="text/javascript" src="game-data.js"></script>
     <script async type="text/javascript" src="love.js" onload="applicationLoad(this)"></script>
 </body>
 </html>
