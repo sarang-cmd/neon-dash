@@ -1,81 +1,66 @@
-// Emscripten game package loader - handles mounting game.love to FS
-// Executes BEFORE love.js loads to ensure file is available when needed
+// Emscripten game package loader - mounts game.love to FS when runtime is ready
+// Uses async fetch + onRuntimeInitialized (when FS is available)
 
 var Module = Module || {};
 
-// Initialize preRun array
-if (!Module.preRun) Module.preRun = [];
+// Global state for game archive
+var _gameArchiveBuffer = null;
 
-// Global state
-var _gameArchive = null;
-var _archiveFetchComplete = false;
+console.log('[GameLoader] Fetching game.love asynchronously...');
 
-// Step 1: Fetch game archive SYNCHRONOUSLY (before any async bootstrap)
-console.log('[GameLoader] Starting synchronous fetch of game.love...');
-try {
-  var xhr = new XMLHttpRequest();
-  xhr.open('GET', 'game.love', false); // synchronous
-  xhr.responseType = 'arraybuffer';
-  xhr.send();
-  
-  if (xhr.status === 200 && xhr.response) {
-    _gameArchive = xhr.response;
-    _archiveFetchComplete = true;
-    console.log('[GameLoader] ✓ Synchronously loaded game.love:', xhr.response.byteLength, 'bytes');
-  } else {
-    throw new Error('HTTP ' + xhr.status);
-  }
-} catch(e) {
-  console.error('[GameLoader] ✗ Synchronous load failed:', e.message);
-  console.log('[GameLoader] Falling back to async fetch...');
-  
-  // Fallback: async fetch
-  fetch('game.love')
-    .then(response => {
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-      return response.arrayBuffer();
-    })
-    .then(buffer => {
-      _gameArchive = buffer;
-      _archiveFetchComplete = true;
-      console.log('[GameLoader] ✓ Async load complete:', buffer.byteLength, 'bytes');
-    })
-    .catch(err => {
-      console.error('[GameLoader] ✗ Async fetch also failed:', err);
-    });
-}
+// Fetch the game archive asynchronously
+fetch('game.love')
+  .then(response => {
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    console.log('[GameLoader] HTTP response OK, reading buffer...');
+    return response.arrayBuffer();
+  })
+  .then(buffer => {
+    _gameArchiveBuffer = buffer;
+    console.log('[GameLoader] ✓ game.love fetched:', buffer.byteLength, 'bytes');
+  })
+  .catch(err => {
+    console.error('[GameLoader] ✗ Fetch failed:', err);
+    throw err;
+  });
 
-// Step 2: Mount archive to FS during preRun (before Love2D boots)
-Module.preRun.push(function() {
-  console.log('[GameLoader] preRun callback executing...');
-  
-  if (!_gameArchive) {
-    console.error('[GameLoader] ✗ No game archive data available!');
-    return;
-  }
-  
-  if (typeof FS === 'undefined') {
-    console.error('[GameLoader] ✗ FS not available in preRun');
-    return;
-  }
+// Mount archive to FS when runtime is ready (FS available)
+var _originalOnRuntimeInitialized = Module.onRuntimeInitialized;
+Module.onRuntimeInitialized = function() {
+  console.log('[GameLoader] onRuntimeInitialized: FS ready, mounting game.love...');
   
   try {
-    // Convert ArrayBuffer to Uint8Array
-    var archiveData = new Uint8Array(_gameArchive);
-    console.log('[GameLoader] Installing', archiveData.length, 'bytes to FS...');
+    if (!_gameArchiveBuffer) {
+      throw new Error('Game archive not fetched yet');
+    }
     
-    // Mount the game archive
+    if (typeof FS === 'undefined') {
+      throw new Error('FS still not available');
+    }
+    
+    // Convert ArrayBuffer to Uint8Array and mount
+    var archiveData = new Uint8Array(_gameArchiveBuffer);
+    console.log('[GameLoader] Calling FS.createDataFile with', archiveData.length, 'bytes...');
+    
     FS.createDataFile('/', 'game.love', archiveData, true, true);
-    
     console.log('[GameLoader] ✓ game.love mounted to FS at /game.love');
     
-    // Verify the file exists
-    var stat = FS.stat('/game.love');
-    console.log('[GameLoader] ✓ File verified: size =', stat.size, 'bytes');
+    // Verify file exists
+    try {
+      var stat = FS.stat('/game.love');
+      console.log('[GameLoader] ✓ File verified: size =', stat.size, 'bytes');
+    } catch(e) {
+      console.warn('[GameLoader] Could not stat file:', e);
+    }
     
   } catch(e) {
-    console.error('[GameLoader] ✗ Failed to mount:', e);
+    console.error('[GameLoader] ✗ Mount failed:', e);
     throw e;
   }
-});
+  
+  // Call original onRuntimeInitialized if it existed
+  if (_originalOnRuntimeInitialized && typeof _originalOnRuntimeInitialized === 'function') {
+    _originalOnRuntimeInitialized();
+  }
+};
 
