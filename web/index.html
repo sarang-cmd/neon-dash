@@ -105,7 +105,7 @@
         }, false);
 
         var Module = {
-            arguments: ["game.love", "web"],
+            arguments: ["/game.love", "web"],
             canvas: (function() {
                 var canvas = document.getElementById('canvas');
                 canvas.addEventListener("webglcontextlost", function(e) {
@@ -133,26 +133,31 @@
                     this.totalDependencies);
             },
             locateFile: function(path) {
+                console.log('[locateFile]', path);
                 return path;
             },
             postRun: [function() {
-                // Decode and mount game archive to Emscripten filesystem
-                if (window.GAME_DATA_B64) {
-                    try {
-                        var bstr = atob(window.GAME_DATA_B64);
-                        var bytes = new Uint8Array(bstr.length);
-                        for (var i = 0; i < bstr.length; i++) {
-                            bytes[i] = bstr.charCodeAt(i);
-                        }
-                        FS.writeFile('/tmp/game.love', bytes);
-                        Module.setStatus('Game loaded.');
-                        console.log('✓ Game archive mounted: /tmp/game.love (' + bytes.length + ' bytes)');
-                    } catch (e) {
-                        console.error('✗ Failed to mount game archive:', e);
-                        Module.setStatus('Failed to load game archive: ' + e);
+                console.log('[postRun] Mounting game archive...');
+                if (typeof FS === 'undefined') {
+                    console.error('✗ FS not available');
+                    return;
+                }
+                if (!window.GAME_DATA_B64) {
+                    console.error('✗ GAME_DATA_B64 undefined');
+                    return;
+                }
+                try {
+                    var bstr = atob(window.GAME_DATA_B64);
+                    var bytes = new Uint8Array(bstr.length);
+                    for (var i = 0; i < bstr.length; i++) {
+                        bytes[i] = bstr.charCodeAt(i);
                     }
-                } else {
-                    console.warn('⚠ Game data not found (GAME_DATA_B64 undefined)');
+                    FS.writeFile('/game.love', bytes);
+                    Module.setStatus('Game archive ready.');
+                    console.log('✓ Game archive mounted: /game.love (' + bytes.length + ' bytes)');
+                } catch (e) {
+                    console.error('✗ Mount failed:', e.message);
+                    Module.setStatus('Error: ' + e.message);
                 }
             }]
         };
