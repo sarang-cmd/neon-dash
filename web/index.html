@@ -134,7 +134,22 @@
             },
             locateFile: function(path) {
                 return path;
-            }
+            },
+            postRun: [function() {
+                Module.setStatus('Loading game...');
+                // Mount game.love to the filesystem if not already there
+                fetch('game.love')
+                    .then(resp => resp.arrayBuffer())
+                    .then(buf => {
+                        try {
+                            FS.writeFile('/tmp/game.love', new Uint8Array(buf));
+                            console.log('Game archive mounted to /tmp/game.love');
+                        } catch (e) {
+                            console.error('Failed to mount game.love:', e);
+                        }
+                    })
+                    .catch(e => console.error('Failed to fetch game.love:', e));
+            }]
         };
 
         Module.setStatus('Downloading...');
