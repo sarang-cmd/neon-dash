@@ -25,6 +25,8 @@ if __name__ == '__main__':
     PORT = 9000
     Handler = CORPHandler
     
+    socketserver.TCPServer.allow_reuse_address = True
+    
     with socketserver.TCPServer(("", PORT), Handler) as httpd:
         print(f"🎮 NEON DASH server running on http://0.0.0.0:{PORT}/")
         print(f"📍 Visit: http://localhost:{PORT}/")
