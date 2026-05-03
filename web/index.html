@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-us">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NEON DASH: CYBER RUNNER</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
@@ -22,10 +23,8 @@
         <div id="game-wrapper">
             <div class="neon-bar neon-bar-left"></div>
             <div id="game-container">
-                <canvas id="canvas" width="960" height="600"></canvas>
-                <div id="loading-screen">
-                    <p>Loading NEON DASH...</p>
-                </div>
+                <canvas id="canvas" width="960" height="600" oncontextmenu="event.preventDefault()"></canvas>
+                <canvas id="loadingCanvas" oncontextmenu="event.preventDefault()" width="960" height="600"></canvas>
             </div>
             <div class="neon-bar neon-bar-right"></div>
         </div>
@@ -81,41 +80,85 @@
         <p>Version 2.0 | Made with Love2D | Font: Press Start 2P</p>
     </footer>
 
-    <script>
+    <script type="text/javascript">
+        var loadingContext = document.getElementById('loadingCanvas').getContext('2d');
+        var gameLoading = true;
+
+        function drawLoadingScreen(text) {
+            var canvas = loadingContext.canvas;
+            loadingContext.fillStyle = "rgb(10, 10, 46)";
+            loadingContext.fillRect(0, 0, canvas.width, canvas.height);
+            
+            loadingContext.font = 'bold 20px "Press Start 2P", cursive';
+            loadingContext.fillStyle = "rgb(0, 255, 255)";
+            loadingContext.textAlign = "center";
+            loadingContext.fillText(text || "Loading NEON DASH...", canvas.width / 2, canvas.height / 2);
+        }
+
+        drawLoadingScreen("Loading NEON DASH...");
+
+        window.addEventListener("keydown", function(e) {
+            // space and arrow keys
+            if([32, 37, 38, 39, 40].indexOf(e.keyCode) > -1) {
+                e.preventDefault();
+            }
+        }, false);
+
         var Module = {
             arguments: ["game.love", "web"],
-            canvas: document.getElementById("canvas"),
-            preRun: [],
-            postRun: [],
-            print: function(text) {
-                console.log(text);
-            },
-            printErr: function(text) {
-                console.error(text);
-            },
-            noInitialRun: false,
-            locateFile: function(path) {
-                return path;
-            },
-            onRuntimeInitialized: function() {
-                var loadingScreen = document.getElementById("loading-screen");
-                if (loadingScreen) {
-                    loadingScreen.style.display = "none";
+            canvas: (function() {
+                var canvas = document.getElementById('canvas');
+                canvas.addEventListener("webglcontextlost", function(e) {
+                    alert('WebGL context lost. You will need to reload the page.');
+                    e.preventDefault();
+                }, false);
+                return canvas;
+            })(),
+            setStatus: function(text, soFar, total) {
+                if (text) {
+                    drawLoadingScreen(text + (soFar && total ? ' (' + soFar + '/' + total + ')' : ''));
+                } else if (Module.remainingDependencies === 0) {
+                    document.getElementById('loadingCanvas').style.display = 'none';
+                    document.getElementById('canvas').style.display = 'block';
+                    gameLoading = false;
                 }
             },
+            totalDependencies: 0,
+            remainingDependencies: 0,
+            monitorRunDependencies: function(left) {
+                this.remainingDependencies = left;
+                this.totalDependencies = Math.max(this.totalDependencies, left);
+                Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies - left) + '/' + this.totalDependencies + ')' : 'All downloads complete.',
+                    this.totalDependencies - left,
+                    this.totalDependencies);
+            },
+            locateFile: function(path) {
+                return path;
+            }
         };
-    </script>
-    <script src="love.js"></script>
+
+        Module.setStatus('Downloading...');
+
+        window.onerror = function(event) {
+            Module.setStatus('Exception thrown, see JavaScript console');
+            Module.setStatus = function(text) {
+                if (text) Module.printErr('[exception] ' + text);
+            };
+        };
+
+        function applicationLoad(e) {
+            Love(Module);
+        }
+
         // Handle visibility change to pause game
         document.addEventListener('visibilitychange', function() {
-            if (document.hidden) {
-                // Tab hidden - send pause input
+            if (!gameLoading && document.hidden) {
                 var event = new KeyboardEvent('keydown', {key: 'p'});
                 document.dispatchEvent(event);
             }
         });
 
-        // Fullscreen button
+        // Fullscreen on double-click
         document.addEventListener('DOMContentLoaded', function() {
             var canvas = document.getElementById('canvas');
             if (canvas) {
@@ -127,15 +170,10 @@
                     }
                 });
             }
-
-            // Sync high score with localStorage
-            setInterval(function() {
-                if (typeof localStorage !== 'undefined') {
-                    var stored = localStorage.getItem('neon-dash-best');
-                    // Could sync back with game state here
-                }
-            }, 5000);
         });
     </script>
+
+    <script type="text/javascript" src="game.js"></script>
+    <script async type="text/javascript" src="love.js" onload="applicationLoad(this)"></script>
 </body>
 </html>
