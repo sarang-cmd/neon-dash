@@ -1,95 +1,109 @@
-// Emscripten game package loader - mounts game.love to FS when ready
-// Works with love.js by accessing FS through Module.FS or waiting for availability
+// Emscripten game package loader for love.js
+// Delays game boot until we can mount game.love to the virtual filesystem
 
 var Module = Module || {};
 
-// Global state for game archive
+// Global state
 var _gameArchiveBuffer = null;
 var _gameArchiveMounted = false;
 
 console.log('[GameLoader] Fetching game.love asynchronously...');
 
-// Fetch the game archive
+// Fetch game archive
 fetch('game.love')
   .then(response => {
     if (!response.ok) throw new Error('HTTP ' + response.status);
-    console.log('[GameLoader] HTTP response OK, reading buffer...');
     return response.arrayBuffer();
   })
   .then(buffer => {
     _gameArchiveBuffer = buffer;
     console.log('[GameLoader] ✓ game.love fetched:', buffer.byteLength, 'bytes');
-    // Try to mount immediately in case FS is already available
-    tryMountArchive();
   })
   .catch(err => {
     console.error('[GameLoader] ✗ Fetch failed:', err);
-    throw err;
   });
 
-// Function to mount the archive - called multiple times until successful
-function tryMountArchive() {
-  if (_gameArchiveMounted) return;
-  if (!_gameArchiveBuffer) {
-    console.log('[GameLoader] Archive not yet fetched');
-    return;
+// Try to access FS and mount the archive
+function mountArchive() {
+  if (_gameArchiveMounted || !_gameArchiveBuffer) return false;
+  
+  // FS might be available as a global, or through IDBFS, or embedded in love.js
+  // Try multiple access paths
+  var FS = null;
+  if (typeof globalThis !== 'undefined' && globalThis.FS) {
+    FS = globalThis.FS;
+  } else if (typeof window !== 'undefined' && window.FS) {
+    FS = window.FS;
+  } else if (Module.FS) {
+    FS = Module.FS;
   }
-
-  // Try to get FS object (love.js might store it in Module.FS or global FS)
-  var FS = window.FS || Module.FS || (typeof FS !== 'undefined' ? FS : null);
   
   if (!FS) {
-    console.log('[GameLoader] FS not available yet, will retry...');
-    return;
+    console.log('[GameLoader] FS not available, will retry...');
+    return false;
   }
 
   try {
     console.log('[GameLoader] Mounting game.love to FS...');
     var archiveData = new Uint8Array(_gameArchiveBuffer);
     
-    // Ensure root directory exists
+    // Create root directory if needed
     try {
       FS.stat('/');
     } catch(e) {
-      console.warn('[GameLoader] Root directory does not exist, creating...');
+      console.log('[GameLoader] Creating root directory...');
       FS.mkdir('/');
     }
     
+    // Mount the file
     FS.createDataFile('/', 'game.love', archiveData, true, true);
-    console.log('[GameLoader] ✓ game.love mounted to FS at /game.love');
+    console.log('[GameLoader] ✓ game.love mounted successfully');
     
-    // Verify file exists
+    // Verify
     var stat = FS.stat('/game.love');
-    console.log('[GameLoader] ✓ File verified: size =', stat.size, 'bytes');
-    
+    console.log('[GameLoader] ✓ Verified: size =', stat.size, 'bytes');
     _gameArchiveMounted = true;
+    return true;
     
   } catch(e) {
-    console.error('[GameLoader] ✗ Mount failed:', e);
-    // Retry after a short delay
-    setTimeout(tryMountArchive, 100);
+    console.error('[GameLoader] Mount failed:', e.message);
+    return false;
   }
 }
 
-// Hook into onRuntimeInitialized to mount when runtime is ready
-var _originalOnRuntimeInitialized = Module.onRuntimeInitialized;
-Module.onRuntimeInitialized = function() {
-  console.log('[GameLoader] onRuntimeInitialized called, attempting mount...');
-  tryMountArchive();
+// Hook into postRun - fires AFTER love.js runtime is fully initialized
+if (!Module.postRun) Module.postRun = [];
+Module.postRun.push(function() {
+  console.log('[GameLoader] postRun: Attempting late mount...');
   
-  // Call original if it existed
-  if (_originalOnRuntimeInitialized && typeof _originalOnRuntimeInitialized === 'function') {
-    _originalOnRuntimeInitialized();
-  }
-};
+  var maxAttempts = 50;
+  var attempt = 0;
+  
+  var tryMount = function() {
+    attempt++;
+    if (mountArchive()) {
+      console.log('[GameLoader] ✓ Archive mounted in postRun');
+      return;
+    }
+    
+    if (attempt < maxAttempts) {
+      setTimeout(tryMount, 50);
+    } else {
+      console.error('[GameLoader] ✗ Failed to mount after', maxAttempts, 'attempts');
+    }
+  };
+  
+  tryMount();
+});
 
-// Also try mounting periodically until we succeed (fallback)
-setTimeout(function checkMount() {
-  if (!_gameArchiveMounted && _gameArchiveBuffer) {
-    tryMountArchive();
-    if (!_gameArchiveMounted) {
-      setTimeout(checkMount, 200);
+// Also try mounting as soon as the archive is fetched
+var originalFetch = window.fetch;
+Object.defineProperty(window, '_gameArchiveBuffer', {
+  set: function(val) {
+    if (val && !_gameArchiveMounted) {
+      console.log('[GameLoader] Archive available, attempting immediate mount...');
+      setTimeout(mountArchive, 10);
     }
   }
-}, 100);
+});
 
